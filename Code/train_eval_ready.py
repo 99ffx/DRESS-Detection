@@ -25,14 +25,18 @@ import Utils.config as config
 from Utils.model import BinaryClassificationModel
 
 
-def load_datasets(feats_path, metadata_path, batch_size=32):
+def load_datasets(
+    feats_path1, feats_path2, metadata_path, batch_size=config.BATCH_SIZE
+):
     df = pd.read_csv(metadata_path)
 
-    train_dataset = DRESSDataset(feats_path, df, split="train")
-    val_dataset = DRESSDataset(feats_path, df, split="val")
+    train_dataset = DRESSDataset(feats_path1, feats_path2, df, split="train")
+    val_dataset = DRESSDataset(feats_path1, feats_path2, df, split="val")
+    test_dataset = DRESSDataset(feats_path1, feats_path2, df, split="test")
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     return train_loader, val_loader
 
@@ -97,19 +101,19 @@ class Trainer:
             avg_val_loss = self.validate(epoch)
             self.val_losses.append(avg_val_loss)
             print(f"Epoch {epoch+1}, Validation Loss: {avg_val_loss:.4f}")
-            # if avg_val_loss < self.best_val_loss:
-            #     self.best_val_loss = avg_val_loss
-            #     self.patience_counter = 0
-            #     print(f"Validation improved to {avg_val_loss:.4f}")
-            # else:
-            #     self.patience_counter += 1
-            #     print(
-            #         f"No improvement in validation loss. Patience: {self.patience_counter}/{self.patience}"
-            #     )
+            if avg_val_loss < self.best_val_loss:
+                self.best_val_loss = avg_val_loss
+                self.patience_counter = 0
+                print(f"Validation improved to {avg_val_loss:.4f}")
+            else:
+                self.patience_counter += 1
+                print(
+                    f"No improvement in validation loss. Patience: {self.patience_counter}/{self.patience}"
+                )
 
-            # if self.patience_counter >= self.patience:
-            #     print("Early stopping triggered. Training halted.")
-            #     break
+            if self.patience_counter >= self.patience:
+                print("Early stopping triggered. Training halted.")
+                break
 
         print(
             "Training complete! Best model saved with Validation Loss:",
@@ -220,26 +224,30 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--eval_only", action="store_true")
     parser.add_argument(
-        "--feats_path",
-        type=str,
-        default="Result/feature_extraction_Gigapath",
-        # Y:\users\faii\DRESS-Detection\Result\feature_extraction_UNIv2\20x_256px_0px_overlap\features_uni_v2\3be35919-9ab1-4f62-bdec-18d98d82efa6.h5
+        "--feats_path10x", type=str, default="../Result/feature_extraction_UNIv2_10x"
     )
     parser.add_argument(
-        # Dataset_csv\dataset_split.csv
+        "--feats_path20x",
+        type=str,
+        default="../Result/feature_extraction_UNIv2_20x/20x_256px_0px_overlap/features_uni_v2",
+    )
+    parser.add_argument(
         "--metadata",
         type=str,
         default="Dataset_csv/dataset_split.csv",
     )
-    parser.add_argument("--batch_size", type=int, default=4)
+    # parser.add_argument("--batch_size", type=int, default=4)
     args = parser.parse_args()
 
-    args.feats_path = os.path.abspath(args.feats_path)
+    args.feats_path10x = os.path.abspath(args.feats_path10x)
+    args.feats_path20x = os.path.abspath(args.feats_path20x)
     args.metadata = os.path.abspath(args.metadata)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    train_loader, val_loader = load_datasets(args.feats_path, args.metadata)
+    train_loader, val_loader = load_datasets(
+        args.feats_path10x, args.feats_path20x, args.metadata
+    )
 
     model = BinaryClassificationModel()
     trainer = Trainer(

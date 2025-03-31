@@ -8,6 +8,7 @@ LOSS_FUNCTION = nn.BCEWithLogitsLoss()
 OPTIM = "AdamW"
 PATIENCE = 7
 NUM_EPOCHS = 30
+BATCH_SIZE = 8
 
 # Warm restart parameters
 T_0 = 10  # First restart after 10 epochs
