@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import rankdata
 from PIL import Image
 from typing import Optional, Tuple
+import os 
 
 
 def create_overlay(
@@ -69,8 +70,10 @@ def visualize_heatmap(
     patch_size_level0: int,
     vis_level: Optional[int] = 2,
     cmap: str = 'coolwarm',
-    normalize: bool = True
-) -> Image.Image:
+    normalize: bool = True,
+    num_top_patches_to_save: int = -1,
+    output_dir: Optional[str] = "output",
+) -> str:
     """
     Generate a heatmap visualization overlayed on a whole slide image (WSI).
     
@@ -82,10 +85,13 @@ def visualize_heatmap(
         vis_level (Optional[int]): Visualization level.
         cmap (str): Colormap to use for the heatmap.
         normalize (bool): Whether to normalize the scores.
+        num_top_patches_to_save (int): Number of high-score patches to save. If set to -1, do not save any. Defaults to -1.
+        output_dir (Optional[str]): Directory to save heatmap and top-k patches.
     
     Returns:
-        Image.Image: The final heatmap visualization.
+        str: Path to the saved heatmap image.
     """
+
     if normalize:
         scores = rankdata(scores, 'average') / len(scores) * 100 / 100
     
@@ -101,5 +107,19 @@ def visualize_heatmap(
     
     overlay_colored = apply_colormap(overlay, cmap)
     blended_img = cv2.addWeighted(img, 0.6, overlay_colored, 0.4, 0)
-    
-    return Image.fromarray(blended_img)
+    blended_img = Image.fromarray(blended_img)
+
+    os.makedirs(output_dir, exist_ok=True)
+    heatmap_path = os.path.join(output_dir, "heatmap.png")
+    blended_img.save(heatmap_path)
+
+    if num_top_patches_to_save > 0:
+        topk_dir = os.path.join(output_dir, "topk_patches")
+        os.makedirs(topk_dir, exist_ok=True)
+        topk_indices = np.argsort(scores)[-num_top_patches_to_save:]
+        for idx, i in enumerate(topk_indices):
+            x, y = coords[i]
+            patch = wsi.read_region_pil((x, y), 0, (patch_size_level0, patch_size_level0))
+            patch.save(os.path.join(topk_dir, f"top_{idx}_score_{scores[i]:.4f}.png"))
+
+    return heatmap_path

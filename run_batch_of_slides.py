@@ -143,6 +143,7 @@ def run_task(processor, args):
                 coords_dir=args.coords_dir or f'{args.mag}x_{args.patch_size}px_{args.overlap}px_overlap',
                 device=f'cuda:{args.gpu}',
                 saveas='h5',
+                batch_limit=args.batch_size
             )
     else:
         raise ValueError(f'Invalid task: {args.task}')
