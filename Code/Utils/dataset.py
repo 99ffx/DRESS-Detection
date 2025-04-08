@@ -7,12 +7,22 @@ from sklearn.preprocessing import LabelEncoder
 
 
 class DRESSDataset(Dataset):
-    def __init__(self, feats_path1, feats_path2, df, split, num_features=512, seed=42):
+    def __init__(
+        self,
+        feats_path1,
+        feats_path2,
+        df,
+        split,
+        num_features=512,
+        seed=42,
+        use_fusion=False,
+    ):
         self.df = df[df["split"] == split] if "split" in df.columns else df
         self.feats_path1 = feats_path1
         self.feats_path2 = feats_path2
         self.num_features = num_features
         self.seed = seed
+        self.use_fusion = use_fusion
 
         self.label_encoder = LabelEncoder()
         self.df = self.df.copy()
@@ -23,38 +33,47 @@ class DRESSDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        slide_path = row["path"]
-        slide_path = slide_path.replace("\\", "/")
-        basename = os.path.basename(slide_path)
+        path = row["path"].replace("\\", "/")  # Normalize path separators
+        basename = os.path.basename(path)
 
-        feature_file1 = os.path.join(self.feats_path1, f"{basename}.h5")
-        feature_file2 = os.path.join(self.feats_path2, f"{basename}.h5")
+        with h5py.File(os.path.join(self.feats_path1, f"{basename}.h5"), "r") as f1:
+            f1_feats = torch.from_numpy(f1["features"][:])
+        if self.use_fusion:
+            with h5py.File(os.path.join(self.feats_path2, f"{basename}.h5"), "r") as f2:
+                f2_feats = torch.from_numpy(f2["features"][:])
 
-        if not os.path.exists(feature_file1):
-            raise FileNotFoundError(f"Feature file {feature_file1} not found")
-        if not os.path.exists(feature_file2):
-            raise FileNotFoundError(f"Feature file {feature_file2} not found")
+            # print(f"Feature shapes - 10x: {f1_feats.shape}, 20x: {f2_feats.shape}")
+            min_patches = min(f1_feats.shape[0], f2_feats.shape[0])
 
-        with h5py.File(feature_file1, "r") as f1, h5py.File(feature_file2, "r") as f2:
-            features1 = torch.from_numpy(f1["features"][:])  # [N,D] D=1536
-            features2 = torch.from_numpy(f2["features"][:])  # [N,D] D=1536
+            if (
+                min_patches < self.num_features
+            ):  # Each returned sample will have exactly self.num_features patches.
+                return self.__getitem__((idx + 1) % len(self))
 
-        min_patches = min(features1.shape[0], features2.shape[0])
-        generator = torch.Generator().manual_seed(self.seed)
+            indices = torch.randperm(
+                min_patches, generator=torch.Generator().manual_seed(self.seed)
+            )[: self.num_features]
+            label = torch.tensor(row["label_encoder"], dtype=torch.long)
 
-        if self.num_features:
-            if min_patches >= self.num_features:
-                indices = torch.randperm(min_patches, generator=generator)[
-                    : self.num_features
-                ]
-            else:
-                indices = torch.randint(
-                    min_patches, (self.num_features,), generator=generator
+            return {
+                "features_10x": f1_feats[indices],
+                "features_20x": f2_feats[indices],
+            }, label
+        else:
+            num_available = f1_feats.shape[0]
+            indices = (
+                torch.randperm(
+                    num_available, generator=torch.Generator().manual_seed(self.seed)
+                )[: self.num_features]
+                if num_available >= self.num_features
+                else torch.randint(
+                    num_available,
+                    (self.num_features,),
+                    generator=torch.Generator().manual_seed(self.seed),
                 )
-            features1 = features1[indices]
-            features2 = features2[indices]
+            )
+            label = torch.tensor(row["label_encoder"], dtype=torch.long)
 
-        fused_features = torch.cat((features1, features2), dim=1)  # [N, 3072]
-        label = torch.tensor(row["label_encoder"], dtype=torch.long)
-
-        return fused_features, label
+            return {
+                "features": f1_feats[indices],
+            }, label
