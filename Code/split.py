@@ -77,7 +77,9 @@ def create_dataset_csv(output_csv, dataset_dirs):
         writer.writerows(data)
 
 
-def create_split(df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=7):
+def create_split(
+    df, input_csv, output_csv, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=7
+):
     np.random.seed(seed)
 
     unique_cases = df["case_id"].unique()
@@ -94,7 +96,7 @@ def create_split(df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=7):
         lambda x: "train" if x in train_cases else ("val" if x in val_cases else "test")
     )
 
-    with open("dataset.csv") as f_in, open("dataset_split.csv", "w") as f_out:
+    with open(input_csv) as f_in, open(output_csv, "w") as f_out:
         reader = csv.reader(f_in)
         writer = csv.writer(f_out)
 
@@ -129,6 +131,29 @@ def patient_data_prep(df, patient_voting="max"):
     return patient_df
 
 
+def center_split(output_dir="."):
+    mgh_data = []
+    process_directory("Dataset/DRESS", "DRESS", mgh_data, "MGH")
+    process_directory("Dataset/MDE", "MDE", mgh_data, "MGH")
+
+    osu_data = []
+    process_directory("Dataset/OSU/DRESS", "DRESS", osu_data, "OSU")
+    process_directory("Dataset/OSU/MDE", "MDE", osu_data, "OSU")
+
+    with open(os.path.join(output_dir, "MGH_dataset.csv"), "w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["case_id", "slice_id", "label", "path"])
+        writer.writerows(mgh_data)
+
+    with open(os.path.join(output_dir, "OSU_dataset.csv"), "w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["case_id", "slice_id", "label", "path"])
+        writer.writerows(osu_data)
+
+    print(f"create MGH dataset: {len(mgh_data)}")
+    print(f"create OSU dataset: {len(osu_data)}")
+
+
 # Define directories and labels
 dataset_dirs = [
     ("Dataset/DRESS", "DRESS", "MGH"),
@@ -137,14 +162,17 @@ dataset_dirs = [
     ("Dataset/OSU/MDE", "MDE", "OSU"),
 ]
 
+# center_split()
+df = pd.read_csv("Dataset_csv/OSU_dataset.csv")
+create_split(df, "Dataset_csv/OSU_dataset.csv", "Dataset_csv/OSU_dataset_split.csv")
 # Output CSV file
-output_csv = "dataset.csv"
-df = pd.read_csv(output_csv)
+# output_csv = "dataset.csv"
+# df = pd.read_csv(output_csv)
 
 # Create the dataset CSV
 # create_dataset_csv(output_csv, dataset_dirs)
 # df = create_split(df)
-df = pd.read_csv("dataset_split.csv")
-patient_df = patient_data_prep(df)
-print(patient_df)
+# df = pd.read_csv("dataset_split.csv")
+# patient_df = patient_data_prep(df)
+# print(patient_df)
 # print(df)
